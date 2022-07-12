@@ -75,10 +75,14 @@ to `config.json` like this:
 ```
 
 ## Data Stored in CSV
+If used with Excel, the CSV file should be added as a data source.
+This ensures that it is not updated by Excel and the tool
+can find the last date and time for incremental updates.
+
 Each row in the generated CSV will have the
-- interval start
-- interval end
-- consumption (in kWh)
+- interval start (date and time)
+- interval end (date and time)
+- consumption (kWh)
 
 The interval start and end dates are as returned from
 the API, which appears to not stick to one timezone,
