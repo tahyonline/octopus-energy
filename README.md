@@ -85,7 +85,13 @@ the API, which appears to not stick to one timezone,
 or take into account the timezone in the request.
 
 Instead, the timezone will alternate between UTC, denoted as
-`Z` and BST, marked as `+01:00`.
+`Z` and BST, marked as `+01:00`. Here is an example for an
+interval that happened to span the daylight saving change:
+
+`"2020-03-29T00:30:00Z","2020-03-29T02:00:00+01:00",0.1`
+
+This interval is not 1.5 hours long, only happens to start
+at 00:30GMT and end at 01:00GMT, which is 02:00BST.
 
 ## Use Case and Development Objectives
 
