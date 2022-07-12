@@ -1,12 +1,17 @@
 # Octopus Energy Meter Readings
 
-Download smart meter data from Octopus Energy (UK)
+Download smart meter data from Octopus Energy (UK) and
+store them in a CSV file.
+
+The CSV file can be used as a data source for Excel or
+another tool.
+Do not edit the CSV file, as when the 
 
 ## Installation
 
 Clone the repo and install the requirements,
 ideally into a virtual environment:
-````shell
+```shell
 # Clone the repo
 git clone https://github.com/tahyonline/octopus-energy.git
 cd octopus-energy
@@ -17,7 +22,7 @@ source venv/bin/activate
 
 # Install requirements
 pip3 install -r requirements.txt
-````
+```
 
 ## Configuration
 
@@ -43,6 +48,45 @@ where you will find your API key, MPAN and serial numbers.
 (Note that I have one meter, like probably most consumers.
 If you have multiple meters and how that looks like,
 please open an issue with the details.)
+
+## Usage
+
+```shell
+cd octopus-energy
+source venv/bin/activate
+python3 octopus.py
+```
+When run the first time, the tool will download all historical
+data going backwards in time.
+
+Each subsequent run will only request any new data since the
+end of the last available reported consumption interval.
+
+Do not edit the CSV file that stores the data, as that might
+throw off the logic.
+
+The CSV file is named as `octopus-<MPAN>-<SERIAL>.csv` or
+you can set a configuration parameter in `config.json` like this:
+```json
+{
+  ...
+  "csv" : "<YOUR FILENAME>",
+  ...
+}
+```
+
+## Data Stored in CSV
+Each row in the generated CSV will have the
+- interval start
+- interval end
+- consumption (in kWh)
+
+The interval start and end dates are as returned from
+the API, which appears to not stick to one timezone,
+or take into account the timezone in the request.
+
+Instead, the timezone will alternate between UTC, denoted as
+`Z` and BST, marked as `+01:00`.
 
 ## Use Case and Development Objectives
 
