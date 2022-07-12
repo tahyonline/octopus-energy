@@ -177,15 +177,16 @@ class OctoReader:
         if csvpath.is_file():
             end_times = []
             with open(self.csvfn, "r") as F:
+                last_time = None
                 for line in F:
                     rec = line.split(",")
                     if rec[0] == 'Start':
                         continue
                     if rec[1][0] == '"' and rec[1][-1] == '"':
                         rec[1] = rec[1][1:-1]
-                    end_times.append(rec[1])
-            if len(end_times):
-                last_time = sorted(end_times)[-1]
+                    if last_time is None or last_time < rec[1]:
+                        last_time = rec[1]
+            if last_time is not None:
                 return _from_octo8601(last_time)
             else:
                 return None
