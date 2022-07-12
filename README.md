@@ -66,12 +66,11 @@ Do not edit the CSV file that stores the data, as that might
 throw off the logic.
 
 The CSV file is named as `octopus-<MPAN>-<SERIAL>.csv` or
-you can set a configuration parameter in `config.json` like this:
+you can add a configuration parameter
+to `config.json` like this:
 ```json
 {
-  ...
-  "csv" : "<YOUR FILENAME>",
-  ...
+  "csv" : "<your filename>"
 }
 ```
 
