@@ -56,7 +56,7 @@ def _from_octo8601(s) -> datetime:
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z")
 
 
-def _urlencode(x):
+def _urlencode(x) -> str:
     """
     Convenience method to URL encode a string
     :param x: string to encode
@@ -192,7 +192,7 @@ class OctoReader:
         else:
             return None
 
-    def _get_interval(self, forward, time):
+    def _get_interval(self, forward: bool, time: datetime) -> (datetime, datetime, datetime):
         """
         Return an interval for the API parameters
 
@@ -333,7 +333,7 @@ class OctoReader:
         except Exception as ex:
             _quit("Error %s: %s" % (self.state, str(ex)), 3)
 
-        print("Done.")
+        self._set_state("Done")
 
 
 # ---------------------------------------------------------------------- MAIN
