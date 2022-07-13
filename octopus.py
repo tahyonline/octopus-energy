@@ -130,7 +130,7 @@ class OctoReader:
         :return: no return
         """
         self.state = state.lower()
-        print(state + "...")
+        print(state + ("." if state.lower() == "done" else "..."))
 
     def _get_from_api(self, endpoint: str, *, params: dict = None) -> dict:
         """
