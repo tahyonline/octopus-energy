@@ -1,77 +1,19 @@
-import sys
 import json
 import requests
 
 from pathlib import Path
 from typing import Optional
-from urllib.parse import quote_plus
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 
-# ---------------------------------------------------------------------- LIB
+from .lib import _urlencode
+from .defaults import LOCAL_TIMEZONE, TIME_DELTA
 
-TIME_DELTA = 90  # number of days to download in one call
-LOCAL_TIMEZONE = datetime.now(timezone.utc).astimezone().tzinfo
-
-
-def _quit(s, code):
-    """
-    Exit the program displaying a message
-
-    :param s: message to display
-    :param code: error code
-    :return: no return
-    """
-    print(s)
-    sys.exit(code)
-
-
-def _to_octo8601(dt: datetime) -> str:
-    """
-    Return the ISO string representation of a datetime
-
-    Seconds resolution only.
-
-    Although the API doc says that the timezone should be included,
-    it actually does not work.
-    https://developer.octopus.energy/docs/api/#parameters
-
-    Therefore the time is converted to UTC and
-    returned as Z (zulu) time.
-
-    :param dt: datetime object
-    :return: date and time as string
-    """
-    return dt.astimezone(timezone.utc).replace(microsecond=0).strftime('%Y-%m-%dT%H:%M:%SZ')
-
-
-def _from_octo8601(s) -> datetime:
-    """
-    New datetime object from an Octopus Energy date-time stamp
-
-    It is nearly an ISO8691 string.
-
-    :param s: the date and time as a string
-    :return: datetime object
-    """
-    return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z")
-
-
-def _urlencode(x) -> str:
-    """
-    Convenience method to URL encode a string
-    :param x: string to encode
-    :return: the encoded string
-    """
-    return quote_plus(str(x).encode('utf-8'))
-
-
-# ---------------------------------------------------------------------- OCTOREADER
 
 class OctoReader:
     """
     Class encapsulating the functionality to retrieve Octopus Energy readings
     """
-    def __init__(self):
+    def __init__(self, cfg):
         """
         Sets up the new object
 
@@ -79,20 +21,10 @@ class OctoReader:
         checks that required settings are in the configuration,
         initialises attributes.
         """
+        self._set_state("Initialising")
         try:
-            # read `config.json`
-            with open("config.json", "r") as F:
-                cfg = json.load(F)
 
-            # find any missing parameters
-            missing = []
-            for required_config in ["url", "apikey", "mpan", "serial"]:
-                if required_config not in cfg:
-                    missing.append(required_config)
-            if len(missing):
-                # abort if any missing
-                missing = ", ".join(missing)
-                _quit("Missing required configuration %s" % missing, 1)
+
 
             # remove trailing / from URL host
             if cfg["url"][-1] == '/':
@@ -111,16 +43,19 @@ class OctoReader:
             # the time delta is the number of days to retrieve in one API request
             self.delta = timedelta(TIME_DELTA)
             if self.delta > timedelta(365):
-                _quit("Source code constant error: time delta must be less than or equal to 365 days", 1)
+                self._set_state("Source code constant error: time delta must be less than or equal to 365 days", False)
+                return
             # each hour has two records, so each day has 48
             self.page_size = TIME_DELTA * 48
 
             self.cfg = cfg
 
         except Exception as ex:
-            _quit("Error loading configuration file (config.json): " + str(ex), 1)
+            self._set_state("Error loading configuration file (config.json): " + str(ex), False)
+            return
 
-    def _set_state(self, state: str):
+
+    def _set_state(self, state: str, ok: bool = True):
         """
         Convenience method to show and store the state
 
@@ -129,8 +64,8 @@ class OctoReader:
         :param state: a string with the state
         :return: no return
         """
-        self.state = state.lower()
-        print(state + ("." if state.lower() == "done" else "..."))
+        self.state = state
+        self.ok = ok
 
     def _get_from_api(self, endpoint: str, *, params: dict = None) -> dict:
         """
@@ -335,9 +270,3 @@ class OctoReader:
 
         self._set_state("Done")
 
-
-# ---------------------------------------------------------------------- MAIN
-if __name__ == "__main__":
-    print("Download Octopus Energy Meter Readings\n")
-    octoreader = OctoReader()
-    octoreader.main()
