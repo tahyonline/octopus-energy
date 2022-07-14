@@ -1,6 +1,6 @@
 #!/bin/bash
 
-. ../venv/bin/activate
+. ./venv/bin/activate
 
 cd server
 pserve development.ini --reload

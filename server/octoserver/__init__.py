@@ -19,7 +19,7 @@ def main(global_config, **settings):
     # read `config.json`
     with Configurator() as config:
         # --------------------------------------- Load configuration
-        with open("config.json", "r") as F:
+        with open("../config.json", "r") as F:
             octocfg = jsonload(F)
         # find any missing parameters
         missing = []
