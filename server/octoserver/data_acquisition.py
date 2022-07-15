@@ -1,18 +1,20 @@
-import json
 import requests
+from os.path import join as pathjoin
 
 from pathlib import Path
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
 
-from .lib import _urlencode
-from .defaults import LOCAL_TIMEZONE, TIME_DELTA
+from .lib import *
+from .stateful import Stateful
+from .defaults import LOCAL_TIMEZONE, TIME_DELTA, CSV_FILE_LOCATION
 
 
-class OctoReader:
+class OctoReader(Stateful):
     """
     Class encapsulating the functionality to retrieve Octopus Energy readings
     """
+
     def __init__(self, cfg):
         """
         Sets up the new object
@@ -21,11 +23,10 @@ class OctoReader:
         checks that required settings are in the configuration,
         initialises attributes.
         """
+        Stateful.__init__(self)
+        self.running = False
         self._set_state("Initialising")
         try:
-
-
-
             # remove trailing / from URL host
             if cfg["url"][-1] == '/':
                 cfg["url"] = cfg["url"][:-1]
@@ -34,9 +35,11 @@ class OctoReader:
             self.csvfn = "-".join(["octopus", cfg["mpan"], cfg["serial"]]) + ".csv"
             if "csv" in cfg:
                 self.csvfn = cfg["csv"]
+            self.csvfn = pathjoin(CSV_FILE_LOCATION, self.csvfn)
+
             # encode the MPAN and serial number for later URL use
-            self.mpan = _urlencode(cfg["mpan"])
-            self.serial = _urlencode(cfg["serial"])
+            self.mpan = urlencode(cfg["mpan"])
+            self.serial = urlencode(cfg["serial"])
 
             # set 'now' -- note that the API uses timezones
             self.now = datetime.now(LOCAL_TIMEZONE).replace(microsecond=0)
@@ -54,20 +57,13 @@ class OctoReader:
             self._set_state("Error loading configuration file (config.json): " + str(ex), False)
             return
 
+        try:
+            self._load_csv()
+        except Exception as ex:
+            self._set_state("Error %s: %s" % (self.state, str(ex)), False)
+            return
 
-    def _set_state(self, state: str, ok: bool = True):
-        """
-        Convenience method to show and store the state
-
-        Exceptions can then display the error state.
-
-        :param state: a string with the state
-        :return: no return
-        """
-        self.state = state
-        self.ok = ok
-
-    def _get_from_api(self, endpoint: str, *, params: dict = None) -> dict:
+    def _get_from_api(self, endpoint: str, *, params: dict = None) -> Optional[dict]:
         """
         Execute an HTTP REST API request
 
@@ -98,34 +94,65 @@ class OctoReader:
             data = res.json()
             if data and "detail" in data:
                 txt = data["detail"]
-            _quit("Error %s: %d %s" % (self.state, res.status_code, txt), 2)
+            self._set_state("Error %s: %d %s" % (self.state, res.status_code, txt), False)
+            return None
 
         return res.json()
 
-    def _check_csv(self) -> Optional[datetime]:
+    def _load_csv(self):
         """
-        Check if the CSV file exists and find the end of the last interval
+        Load the CSV file
 
-        :return: end time of the last interval or None
+        :return: no return
         """
+        self.records = []
+        self.incomplete_days = []
+        self.missing_days = []
+        self.first_time = None
+        self.last_time = None
         csvpath = Path(self.csvfn)
+        days_in_records = []
         if csvpath.is_file():
-            end_times = []
+            self._set_state("Loading CSV file")
             with open(self.csvfn, "r") as F:
+                day = None
+                count = 0
                 for line in F:
                     rec = line.split(",")
                     if rec[0] == 'Start':
                         continue
-                    if rec[1][0] == '"' and rec[1][-1] == '"':
-                        rec[1] = rec[1][1:-1]
-                    end_times.append(rec[1])
-            if len(end_times):
-                last_time = sorted(end_times)[-1]
-                return _from_octo8601(last_time)
-            else:
-                return None
+                    for i in [0, 1]:
+                        if rec[i][0] == '"' and rec[i][-1] == '"':
+                            rec[i] = rec[i][1:-1]
+                    self.records.append(rec)
+                    count += 1
+                    if day is None or day != rec[0][:10]:
+                        if day is not None:
+                            if count != 48:
+                                self.incomplete_days.append({
+                                    "day": day,
+                                    "recs": count,
+                                })
+                        day = rec[0][:10]
+                        days_in_records.append(day)
+                        count = 0
+
+            if len(self.records):
+                self.records = sorted(self.records, key=lambda x: x[0])
+            self.first_time = from_octo8601(self.records[0][0])
+            self.last_time = from_octo8601(self.records[-1][1])
+
+            dt = self.first_time
+            _one_day = timedelta(1)
+            while dt <= self.last_time:
+                day = to_ymd(dt)
+                if day not in days_in_records:
+                    self.missing_days.append(day)
+                dt += _one_day
+
+            self._set_state("Loaded %d records" % (len(self.records)))
         else:
-            return None
+            self._set_state("CSV file does not exist")
 
     def _get_interval(self, forward: bool, time: datetime) -> (datetime, datetime, datetime):
         """
@@ -170,26 +197,29 @@ class OctoReader:
         :param last_time: the end of the last timestamp in the CSV file or None
         :return: the list of retrieved records
         """
-        going_forward = True # forward = incremental, backward = historic
+        going_forward = True  # forward = incremental, backward = historic
+        l.getLogger("requests").setLevel(l.WARNING)
+        l.getLogger("urllib").setLevel(l.WARNING)
+        l.getLogger("urllib3").setLevel(l.WARNING)
         if last_time is None:
             # if no time given, then retrieve all data from 'now' going backwards
             going_forward = False
             last_time = self.now
 
-        all_readings = [] # all retrieved records
+        all_readings = []  # all retrieved records
 
         while last_time is not None:
             # get the interval times for the current last time
             start_time, end_time, next_time = self._get_interval(going_forward, last_time)
-            print("   from", start_time, "to", end_time)
+            self._set_state("Requesting from %s to %s " % (start_time, end_time))
 
             # retrieve the data from the API
             data = self._get_from_api(
                 "/v1/electricity-meter-points/%s/meters/%s/consumption" %
                 (self.mpan, self.serial),
                 params={
-                    "period_from": _to_octo8601(start_time),
-                    "period_to": _to_octo8601(end_time),
+                    "period_from": to_octo8601(start_time),
+                    "period_to": to_octo8601(end_time),
                     "order_by": "period",
                     "page_size": self.page_size,
                 }
@@ -205,22 +235,23 @@ class OctoReader:
 
         return sorted(all_readings, key=lambda x: x["interval_start"])
 
-    def _write_records(self, F, data):
+    def _write_records(self, fh, data):
         """
         Writes the records to the provided file
 
-        :param F: open file handle
+        :param fh: open file handle
         :param data: list of consumption records
         :return: no return
         """
         for rec in data:
-            F.write("\"%s\",\"%s\",%s\n" % (
+            fh.write("\"%s\",\"%s\",%s\n" % (
                 rec["interval_start"],
                 rec["interval_end"],
                 rec["consumption"]
             ))
+        self._set_state("Wrote %d records" % (len(data)))
 
-    def main(self):
+    def update(self):
         """
         Main method: executes the data retrieval
 
@@ -231,42 +262,49 @@ class OctoReader:
         is downloaded.
         :return: no return
         """
+        if self.running:
+            l.warning("OctoReader: update already running")
+            return
+        self.running = True
         try:
             # Check if data is already available
-            self._set_state("Checking existing data")
-            last_time = self._check_csv()
 
-            if last_time is None:
+            if self.last_time is None:
                 # No data available, full history download required
                 self._set_state("Downloading historic data")
                 data = self._read_consumption()
 
                 if len(data) > 0:
                     # Create a new CSV file with the data
-                    print("Retrieved", len(data), "historic consumption records.")
-                    self._set_state("Saving historic data")
+                    self._set_state("Saving %d historic consumption records" % len(data))
                     with open(self.csvfn, "w") as F:
                         F.write("Start,End,Consumption\n")
                         self._write_records(F, data)
                 else:
-                    print("No historic data.")
+                    self._set_state("No historic data.")
             else:
                 # Data is already available, incremental update follows
-                print("Last interval ended at", last_time)
-                self._set_state("Downloading new data")
-                data = self._read_consumption(last_time)
+                self._set_state("Downloading new data since %s" % self.last_time)
+                data = self._read_consumption(self.last_time)
 
                 if len(data) > 0:
                     # Have new data, append to CSV
-                    print("Retrieved", len(data), "new consumption records.")
-                    self._set_state("Saving new data")
+                    self._set_state("Saving %d new consumption records" % len(data))
                     with open(self.csvfn, "a") as F:
                         self._write_records(F, data)
                 else:
-                    print("No new data.")
+                    self._set_state("No new data.")
 
         except Exception as ex:
-            _quit("Error %s: %s" % (self.state, str(ex)), 3)
+            self._set_state("Error %s: %s" % (self.state, str(ex)), False)
+            self.running = False
+            return
 
-        self._set_state("Done")
+        try:
+            self._load_csv()
+        except Exception as ex:
+            self._set_state("Error %s: %s" % (self.state, str(ex)), False)
+            self.running = False
+            return
 
+        self.running = False

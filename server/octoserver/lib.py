@@ -1,9 +1,12 @@
+import logging as l
 from urllib.parse import quote_plus
+from re import compile as re_compile
 from datetime import datetime, timezone
+
 
 # ---------------------------------------------------------------------- LIB
 
-def _to_octo8601(dt: datetime) -> str:
+def to_octo8601(dt: datetime) -> str:
     """
     Return the ISO string representation of a datetime
 
@@ -22,7 +25,7 @@ def _to_octo8601(dt: datetime) -> str:
     return dt.astimezone(timezone.utc).replace(microsecond=0).strftime('%Y-%m-%dT%H:%M:%SZ')
 
 
-def _from_octo8601(s) -> datetime:
+def from_octo8601(s) -> datetime:
     """
     New datetime object from an Octopus Energy date-time stamp
 
@@ -34,10 +37,37 @@ def _from_octo8601(s) -> datetime:
     return datetime.strptime(s, "%Y-%m-%dT%H:%M:%S%z")
 
 
-def _urlencode(x) -> str:
+def to_ymd(dt: datetime) -> str:
+    return dt.strftime("%Y-%m-%d")
+
+
+def from_ymd(s: str) -> datetime:
+    return datetime.strptime(s, "%Y-%m-%d")
+
+
+def to_hm(dt: datetime) -> str:
+    return dt.strftime("%H:%M")
+
+
+def urlencode(x) -> str:
     """
     Convenience method to URL encode a string
     :param x: string to encode
     :return: the encoded string
     """
     return quote_plus(str(x).encode('utf-8'))
+
+
+def to_utc(dt: datetime) -> datetime:
+    return dt.astimezone(tz=timezone.utc)
+
+
+def reterr(s: str):
+    l.error(s)
+    return {
+        "ok": False,
+        "error": s,
+    }
+
+
+check_date_format = re_compile(r"\d\d\d\d-\d\d-\d\d")

@@ -1,11 +1,12 @@
 # Octopus Energy Meter Readings
 
 Download smart meter data from Octopus Energy (UK) and
-store them in a CSV file.
+analyse the consumption patterns.
 
-The CSV file can be used as a data source for Excel or
-another tool.
-Do not edit the CSV file, as when the 
+> I am not associated with Octopus Energy
+> other than I am a consumer using their services.
+> Please do not contact me with outages,
+> or issues with billing or anything else... 😀
 
 ## Installation
 
@@ -22,6 +23,9 @@ source venv/bin/activate
 
 # Install requirements
 pip3 install -r requirements.txt
+
+# Done
+deactivate
 ```
 
 ## Configuration
@@ -51,11 +55,17 @@ please open an issue with the details.)
 
 ## Usage
 
+The convenience script
 ```shell
-cd octopus-energy
-source venv/bin/activate
-python3 octopus.py
+./run.sh
 ```
+will build the single page application (SPA)
+and the local server,
+then start it and launch the default browser
+opening the analytics tool.
+
+
+# OLD
 When run the first time, the tool will download all historical
 data going backwards in time.
 
