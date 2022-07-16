@@ -11,6 +11,10 @@ SPA_PATH = '../../spa/build'
 # Frontend related
 DATE_TIME_FORMAT = "%a, %d %b %Y %H:%M %z"
 
+# Analytics related
+AVERAGE_DAYS = [7, 30, 90]
+DAY_START = "03:00"
+
 # Octopus Energy related
 TIME_DELTA = 90  # number of days to download in one call
 LOCAL_TIMEZONE = datetime.now(timezone.utc).astimezone().tzinfo

@@ -46,21 +46,36 @@ def daily(req):
     if i < len(a.days_dates) - 1:
         _next = a.days_dates[i + 1]
 
+    ymd = to_ymd(d.date)
+    base_load = None
+    base_load_total = None
+    base_load_days = None
+    if ymd in a.baseaverages[a.average_days[0]]:
+        base_load_total = a.baseaverages[a.average_days[0]][ymd]
+        base_load = [base_load_total / 48] * len(d.times)
+        base_load_days = a.average_days[0]
     ret = {
         "ok": True,
-        "day": to_ymd(d.date),
+        "day": ymd,
         "chart": {
             "times": d.times,
             "half_hour_consumption": d.consumption,
+            "base_load": base_load,
         },
         "stats": {
             "day_total": sum(d.consumption),
+            "base_load_total": base_load_total,
+            "is_full_day": d.is_full_day(),
         },
         "meta": {
             "first_day": to_ymd(a.first_time),
             "last_day": to_ymd(a.last_time),
             "first_full_day": a.first_full_day,
             "last_full_day": a.last_full_day,
+            "new_day_start": a.new_day_start,
+            "base_load_days": base_load_days,
+            "min": a.min,
+            "max": a.max,
             "prev": _prev,
             "next": _next,
         }
@@ -115,6 +130,9 @@ def averages(req):
             "last_day": to_ymd(a.last_time),
             "first_full_day": a.first_full_day,
             "last_full_day": a.last_full_day,
+            "new_day_start": a.new_day_start,
+            "min": a.min,
+            "max": a.max,
         }
     }
     return ret

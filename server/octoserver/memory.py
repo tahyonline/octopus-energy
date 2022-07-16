@@ -4,17 +4,14 @@ from .analytics import Analytics
 from .data_acquisition import OctoReader
 
 _analytics = None
-
-
-def generate_analytics(octoreader: OctoReader):
-    return Analytics(octoreader)
+_octoreader = None
 
 
 def get_analytics(cfg):
     global _analytics
     octoreader = get_octoreader(cfg)
     if _analytics is None or not _analytics.same_period(octoreader):
-        _analytics = generate_analytics(octoreader)
+        _analytics = Analytics(cfg, octoreader)
 
     if _analytics.ok:
         l.info("Analytics initialised")
@@ -22,9 +19,6 @@ def get_analytics(cfg):
         l.warning("Analytics was not initialised")
 
     return _analytics
-
-
-_octoreader = None
 
 
 def get_octoreader(cfg) -> OctoReader:

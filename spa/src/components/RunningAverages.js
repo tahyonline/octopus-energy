@@ -34,11 +34,11 @@ function RunningAverages() {
     const title = (() => {
         switch (whichKind) {
             case 'total':
-                return "Average Total Daily Consumption"
+                return <b>Average Total Daily Consumption</b>
             case 'base':
-                return "Average Baase Load"
+                return <><b>Average Base Load</b> (lowest load x 48)</>
             case 'max':
-                return "Average Maximum Half-hourly Consumption"
+                return <b>Daily Maximum Half-hourly Consumption</b>
         }
     })();
 
@@ -78,7 +78,7 @@ function RunningAverages() {
                 </Grid>
                 <Grid sx={{px: 3}}>
                     <Typography sx={{py: 1}}>
-                        <b>{title}</b>
+                        {title}
                     </Typography>
                 </Grid>
             </Grid>
