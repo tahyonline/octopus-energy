@@ -115,7 +115,7 @@ function AcquisitionPane() {
                         <Grid container spacing={1}>
                             <Grid item xs={3}>
                                 <Typography>
-                                    <b>Data log:</b>
+                                    <b>Data management log:</b>
                                 </Typography>
                             </Grid>
                             <Grid>
