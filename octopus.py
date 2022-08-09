@@ -71,6 +71,7 @@ class OctoReader:
     """
     Class encapsulating the functionality to retrieve Octopus Energy readings
     """
+
     def __init__(self):
         """
         Sets up the new object
@@ -84,27 +85,68 @@ class OctoReader:
             with open("config.json", "r") as F:
                 cfg = json.load(F)
 
-            # find any missing parameters
-            missing = []
-            for required_config in ["url", "apikey", "mpan", "serial"]:
-                if required_config not in cfg:
-                    missing.append(required_config)
-            if len(missing):
-                # abort if any missing
-                missing = ", ".join(missing)
-                _quit("Missing required configuration %s" % missing, 1)
+            self.accounts = []
 
-            # remove trailing / from URL host
-            if cfg["url"][-1] == '/':
-                cfg["url"] = cfg["url"][:-1]
+            if "advanced" in cfg:
+                for acfg in cfg["accounts"]:
+                    missing = []
+                    for required_config in ["url", "apikey", "csv", "name"]:
+                        if required_config not in acfg:
+                            missing.append(required_config)
+                    if len(missing):
+                        # abort if any missing
+                        missing = ", ".join(missing)
+                        _quit("Missing required configuration %s" % missing, 1)
 
-            # set the CSV file name
-            self.csvfn = "-".join(["octopus", cfg["mpan"], cfg["serial"]]) + ".csv"
-            if "csv" in cfg:
-                self.csvfn = cfg["csv"]
-            # encode the MPAN and serial number for later URL use
-            self.mpan = _urlencode(cfg["mpan"])
-            self.serial = _urlencode(cfg["serial"])
+                    self.accounts.append({
+                        "name": acfg["name"],
+                        "apiurl": acfg["url"],
+                        "apikey": acfg["apikey"],
+                        "csv": acfg["csv"],
+                    })
+
+            else:
+                # find any missing parameters
+                missing = []
+                for required_config in ["url", "apikey", "mpan", "serial"]:
+                    if required_config not in cfg:
+                        missing.append(required_config)
+                if len(missing):
+                    # abort if any missing
+                    missing = ", ".join(missing)
+                    _quit("Missing required configuration %s" % missing, 1)
+
+                # remove trailing / from URL host
+                if cfg["url"][-1] == '/':
+                    cfg["url"] = cfg["url"][:-1]
+
+                # set the CSV file name
+                csvfn = "-".join(["octopus", cfg["mpan"], cfg["serial"]]) + ".csv"
+                if "csv" in cfg:
+                    csvfn = cfg["csv"]
+                typ = "electricity"
+                if "type" in cfg and cfg["type"].lower() in ["electricity", "gas"]:
+                    typ = cfg["type"].lower()
+                # encode the MPAN and serial number for later URL use
+                mpan = _urlencode(cfg["mpan"])
+                serial = _urlencode(cfg["serial"])
+                self.accounts.append({
+                    "name": typ.capitalize(),
+                    "url": cfg["url"],
+                    "apikey": cfg["apikey"],
+                    "mpan": mpan,
+                    "serial": serial,
+                    "type": typ,
+                    "apiurl": (
+                        "%s/v1/electricity-meter-points/%s/meters/%s/consumption" % (cfg["url"], mpan, serial)
+                        if typ == "electricity" else
+                        "%s/v1/gas-meter-points/%s/meters/%s/consumption" % (cfg["url"], mpan, serial)
+                    ),
+                    "csv": csvfn,
+                })
+                if typ == "electricity":
+                    self.accounts[-1]["apirul"] = "/v1/electricity-meter-points/%s/meters/%s/consumption" % (
+                        mpan, serial)
 
             # set 'now' -- note that the API uses timezones
             self.now = datetime.now(LOCAL_TIMEZONE).replace(microsecond=0)
@@ -132,31 +174,25 @@ class OctoReader:
         self.state = state.lower()
         print(state + "...")
 
-    def _get_from_api(self, endpoint: str, *, params: dict = None) -> dict:
+    def _get_from_api(self, get_url: str, apikey: str, *, params: dict = None) -> dict:
         """
         Execute an HTTP REST API request
 
-        Will abord the program if an error is encountered.
+        Will abort the program if an error is encountered.
 
         Will use the configured protocol and host part of the URL
         and authenticate with the given bearer token.
 
-        :param endpoint: the path portion of the API endpoint
+        :param get_url: fully qualified API URL
         :param params: a dict of parameter name/value pairs to be added to the query string
         :return: the returned and deserialised JSON data
         """
-        cfg = self.cfg
-        if endpoint[0] == '/':
-            endpoint = endpoint[1:]
-
-        get_url = "%s/%s" % (cfg["url"], endpoint)
-
         if params:
             param_string = "&".join(map(lambda x: "%s=%s" % (x[0], x[1]), params.items()))
             if param_string:
                 get_url += "?" + param_string
 
-        res = requests.get(get_url, auth=(cfg["apikey"], ""))
+        res = requests.get(get_url, auth=(apikey, ""))
 
         if res.status_code != 200:
             txt = res.text
@@ -167,16 +203,18 @@ class OctoReader:
 
         return res.json()
 
-    def _check_csv(self) -> Optional[datetime]:
+    @staticmethod
+    def _check_csv(acc) -> Optional[datetime]:
         """
         Check if the CSV file exists and find the end of the last interval
 
+        :param acc: the account as a dict
         :return: end time of the last interval or None
         """
-        csvpath = Path(self.csvfn)
+        csvfn = acc["csv"]
+        csvpath = Path(csvfn)
         if csvpath.is_file():
-            end_times = []
-            with open(self.csvfn, "r") as F:
+            with open(csvfn, "r") as F:
                 last_time = None
                 for line in F:
                     rec = line.split(",")
@@ -223,7 +261,7 @@ class OctoReader:
             _next = _start
             return _start, _end, _next
 
-    def _read_consumption(self, last_time=None) -> list:
+    def _read_consumption(self, acc, last_time=None) -> list:
         """
         Retrieve the consumption data from Octopus Energy
 
@@ -233,16 +271,17 @@ class OctoReader:
         `last_time` needs to be set to None to do a full
         historic retrieval.
 
+        :param acc: the account as a dict
         :param last_time: the end of the last timestamp in the CSV file or None
         :return: the list of retrieved records
         """
-        going_forward = True # forward = incremental, backward = historic
+        going_forward = True  # forward = incremental, backward = historic
         if last_time is None:
             # if no time given, then retrieve all data from 'now' going backwards
             going_forward = False
             last_time = self.now
 
-        all_readings = [] # all retrieved records
+        all_readings = []  # all retrieved records
 
         while last_time is not None:
             # get the interval times for the current last time
@@ -251,8 +290,8 @@ class OctoReader:
 
             # retrieve the data from the API
             data = self._get_from_api(
-                "/v1/electricity-meter-points/%s/meters/%s/consumption" %
-                (self.mpan, self.serial),
+                acc["apiurl"],
+                acc["apikey"],
                 params={
                     "period_from": _to_octo8601(start_time),
                     "period_to": _to_octo8601(end_time),
@@ -271,22 +310,23 @@ class OctoReader:
 
         return sorted(all_readings, key=lambda x: x["interval_start"])
 
-    def _write_records(self, F, data):
+    @staticmethod
+    def _write_records(f, data):
         """
         Writes the records to the provided file
 
-        :param F: open file handle
+        :param f: open file handle
         :param data: list of consumption records
         :return: no return
         """
         for rec in data:
-            F.write("\"%s\",\"%s\",%s\n" % (
+            f.write("\"%s\",\"%s\",%s\n" % (
                 rec["interval_start"],
                 rec["interval_end"],
                 rec["consumption"]
             ))
 
-    def main(self):
+    def _process_account(self, acc):
         """
         Main method: executes the data retrieval
 
@@ -295,23 +335,26 @@ class OctoReader:
 
         If there is no CSV file, then all available historic data
         is downloaded.
+
+        :param acc:  the account as a dict
         :return: no return
         """
+        print("Processing account %s" % acc["name"])
         try:
             # Check if data is already available
             self._set_state("Checking existing data")
-            last_time = self._check_csv()
+            last_time = self._check_csv(acc)
 
             if last_time is None:
                 # No data available, full history download required
                 self._set_state("Downloading historic data")
-                data = self._read_consumption()
+                data = self._read_consumption(acc)
 
                 if len(data) > 0:
                     # Create a new CSV file with the data
                     print("Retrieved", len(data), "historic consumption records.")
                     self._set_state("Saving historic data")
-                    with open(self.csvfn, "w") as F:
+                    with open(acc["csv"], "w") as F:
                         F.write("Start,End,Consumption\n")
                         self._write_records(F, data)
                 else:
@@ -320,19 +363,24 @@ class OctoReader:
                 # Data is already available, incremental update follows
                 print("Last interval ended at", last_time)
                 self._set_state("Downloading new data")
-                data = self._read_consumption(last_time)
+                data = self._read_consumption(acc, last_time)
 
                 if len(data) > 0:
                     # Have new data, append to CSV
                     print("Retrieved", len(data), "new consumption records.")
                     self._set_state("Saving new data")
-                    with open(self.csvfn, "a") as F:
+                    with open(acc["csv"], "a") as F:
                         self._write_records(F, data)
                 else:
                     print("No new data.")
 
         except Exception as ex:
             _quit("Error %s: %s" % (self.state, str(ex)), 3)
+
+    def main(self):
+
+        for acc in self.accounts:
+            self._process_account(acc)
 
         print("Done.")
 

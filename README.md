@@ -26,6 +26,8 @@ pip3 install -r requirements.txt
 
 ## Configuration
 
+### Simple: For Single Meters
+
 Copy the `config-template.json` file to
 `config.json` and put in your API key.
 
@@ -42,12 +44,46 @@ The `apikey`, `mpan` and `serial` parameters are available
 on the [Octopus Energy](https://octopus.energy) customer portal.
 On the **Accounts** page, click on **Personal details**
 right under your name.
-Find **Developer settings** on the Your Settings page,
+Find **Developer settings** on the "Your Settings" page,
 where you will find your API key, MPAN and serial numbers.
 
-(Note that I have one meter, like probably most consumers.
-If you have multiple meters and how that looks like,
-please open an issue with the details.)
+The CSV file is named as `octopus-<MPAN>-<SERIAL>.csv` by default,
+or you can add a configuration parameter
+to `config.json` like this:
+```json
+{
+  "csv" : "<your filename>"
+}
+```
+
+### Advanced: For Multiple Meters
+
+Create the `config.json` file as follows:
+
+```json
+{
+  "accounts": [
+    {
+      "name": "Advanced Electricity",
+      "url": "<fully specified API URL>",
+      "apikey": "<your API key>",
+      "csv": "<your CSV file name>"
+    }
+  ]
+}
+```
+
+The URL must conform to the Octopus Energy API specification:
+- For electricity meters: `https://api.octopus.energy/v1/electricity-meter-points/<MPAN>/meters/<SERIAL>/consumption`
+- For gas meters:  `https://api.octopus.energy/v1/gas-meter-points/<MPAN>/meters/<SERIAL>/consumption`
+Replace `<MPAN>` and `<SERIAL>` with the codes for your meters.
+
+A default file name is not used, the `csv` parameter must be specified
+and **should be different** for the meters,
+as otherwise it will be overwritten with the data of the last account in the list.
+
+If both simple and advanced configurations are in the file,
+the advanced takes precedence and the simple is ignored.
 
 ## Usage
 
@@ -65,14 +101,6 @@ end of the last available reported consumption interval.
 Do not edit the CSV file that stores the data, as that might
 throw off the logic.
 
-The CSV file is named as `octopus-<MPAN>-<SERIAL>.csv` or
-you can add a configuration parameter
-to `config.json` like this:
-```json
-{
-  "csv" : "<your filename>"
-}
-```
 
 ## Data Stored in CSV
 If used with Excel, the CSV file should be added as a data source.
@@ -102,7 +130,7 @@ at 00:30GMT and end at 01:00GMT, which is 02:00BST.
 Download and keep a record of energy usage for own analytics
 purposes.
 
-Minimise requirements, ideally nothing beyond the what is
+Minimise requirements, ideally nothing beyond what is
 in the core libraries + `requests`.
 
 Low fault tolerance: report error and quit.
