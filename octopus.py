@@ -87,7 +87,7 @@ class OctoReader:
 
             self.accounts = []
 
-            if "advanced" in cfg:
+            if "accounts" in cfg:
                 for acfg in cfg["accounts"]:
                     missing = []
                     for required_config in ["url", "apikey", "csv", "name"]:
